@@ -118,7 +118,7 @@ class _LessonResultScreenState extends State<LessonResultScreen> {
                     child: _StatCard(
                       label: 'Accuracy',
                       value: '${accuracy.round()}%',
-                      icon: Icons.target_rounded,
+                      icon: Icons.track_changes_rounded,
                       color: scheme.primary,
                     ),
                   ),

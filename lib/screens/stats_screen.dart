@@ -84,7 +84,7 @@ class StatsScreen extends StatelessWidget {
             children: [
               Expanded(
                 child: _StatCard(
-                  icon: Icons.target_rounded,
+                  icon: Icons.track_changes_rounded,
                   label: 'Accuracy',
                   value: '${app.progress.accuracyPct.round()}%',
                   color: scheme.primary,
