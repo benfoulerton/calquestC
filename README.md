@@ -1,200 +1,111 @@
-# Calculus Quest
+# Calculus Quest v2
 
-A Duolingo-style calculus learning app for Android, built in Flutter and powered
-by a complete Stewart Calculus 9e course (116 lessons across 16 chapters, 580
-practice questions, ~1,800 XP). Designed to feel clean, modern, academic, and
-motivating — never childish.
+A Duolingo-style, ADHD-friendly calculus learning app for Android, built in
+Flutter with **Material 3 Expressive** theming and an **FSRS-lite** spaced-
+repetition system.
 
-The app dynamically loads its content from a single bundled JSON file, so the
-curriculum, formulas, examples, common mistakes, and questions are all data,
-not hardcoded UI.
+## What's new in v2
 
----
+This is a complete pedagogical rebuild. v1 used a textbook-style "read four
+paragraphs, then quiz" structure. v2 uses **micro-screen lesson sequences**:
+3–5 minute lessons of 10–15 single-screen interactions, each one of:
 
-## Getting started
+- **Visual hook** — animated diagram, no input
+- **Explore slider** — drag a slider, watch the diagram react
+- **Worked example** — tap-through stepped reveal
+- **Tap-to-match** — pair items left ↔ right
+- **Fill-in-the-blank** — pick a token to complete an equation
+- **Tap-the-graph** — choose the right shape from 3-4 options
+- **Estimate** — drag a slider to estimate slope/area, tolerance scoring
+- **Build expression** — tap pieces to assemble an answer
+- **Reorder steps** — drag derivation steps into the right order
+- **Multiple choice** — distractors target known misconceptions
+- **Summary** — recap with formula
 
-You need:
+Every diagram is a custom `CustomPainter` driven by an `AnimationController`
+or external slider — drag a tangent line along `y = x²`, slide `n` higher
+to see Riemann rectangles converge, watch a secant rotate into a tangent
+as `h → 0`.
 
-- Flutter (stable channel, 3.10 or later)
-- An Android device or emulator
-- Java 17 + Android SDK 34 if you plan to build a release APK
+## Material 3 Expressive
 
-```bash
-cd calculus_app
+- Full M3 colour scheme generated via `ColorScheme.fromSeed`
+- 9 named theme presets: Ocean, Forest, Sunset, Synthwave, Mono, Coral,
+  Mint, Indigo, Amber
+- Optional Android 12+ wallpaper-derived dynamic colour via
+  `dynamic_color`
+- Light + dark mode
+- Reduce-motion / sound / haptics toggles
+- Big radii (24/12), pill chips, tone-based surfaces
+
+## FSRS-lite review
+
+Every question has an `itemId`. On a wrong answer:
+
+- The item gets requeued once for end-of-lesson retry
+- The item's review-stability shrinks; it'll be due sooner
+- The item appears on the **Review** tab when due
+- Tapping "Start review" runs a synthetic lesson made of just those items
+
+Stability roughly doubles per success (cap 365 days), shrinks to 40% per
+failure. Simpler than full FSRS but captures the spaced-repetition shape
+the brief calls for.
+
+## Engagement loop
+
+- XP per correct question + per lesson + perfect / streak bonuses
+- Streak counter with 2 free freezes per week
+- Surprise chest every 5th lesson — 1 of 5 random rewards (theme unlocks,
+  bonus XP, etc.)
+- Daily quests
+- Achievements (First Steps, Five Down, Week Warrior, …)
+
+## Build
+
+```sh
 flutter pub get
-flutter run                   # runs on a connected device or emulator
-flutter build apk --release   # produces build/app/outputs/flutter-apk/app-release.apk
+flutter run            # debug
+flutter build apk      # release APK
 ```
 
-If `flutter pub get` complains about missing Android tooling, run:
-
-```bash
-flutter doctor
-```
-
-…and follow the suggestions. The app targets Android only — iOS, web, and
-desktop scaffolding has been omitted to keep the project tight.
-
-> **Note on signing:** the bundled `android/app/build.gradle` reuses the debug
-> signing config for `release` builds, which is fine for sideloading and
-> testing. To publish to the Play Store, generate a real keystore and replace
-> the `signingConfig` block.
-
----
+Compatible with Codemagic build pipeline. AGP 8.6.0, Kotlin 2.1.0,
+compileSdk 36.
 
 ## Project structure
 
 ```
-calculus_app/
-├── android/                              # standard Flutter Android project
-├── assets/
-│   └── data/
-│       └── stewart_calculus_course.json  # the entire course (loaded at runtime)
-├── lib/
-│   ├── main.dart                         # app entry point + MultiProvider
-│   ├── data/
-│   │   └── daily_quotes.dart             # 30-quote rotating bank
-│   ├── models/
-│   │   ├── achievements.dart             # static badge catalogue
-│   │   ├── course.dart                   # Course / Unit / Topic / Lesson / Question
-│   │   └── user_progress.dart            # XP, streak, completion, etc.
-│   ├── providers/
-│   │   ├── course_provider.dart
-│   │   ├── progress_provider.dart        # XP, streak, achievement orchestration
-│   │   └── settings_provider.dart        # dark mode, sound
-│   ├── screens/
-│   │   ├── achievements_screen.dart
-│   │   ├── home_screen.dart
-│   │   ├── lesson_screen.dart
-│   │   ├── loading_screen.dart
-│   │   ├── main_shell.dart               # bottom nav scaffold + global toasts
-│   │   ├── path_screen.dart              # Duolingo-style course map
-│   │   ├── quiz_result_screen.dart
-│   │   ├── quiz_screen.dart              # MCQ + numerical input
-│   │   ├── review_screen.dart            # weakest lessons surface
-│   │   ├── search_screen.dart
-│   │   ├── settings_screen.dart
-│   │   └── stats_screen.dart             # custom-painted accuracy chart
-│   ├── services/
-│   │   ├── course_service.dart           # rootBundle JSON loader (cached)
-│   │   └── storage_service.dart          # shared_preferences wrapper
-│   ├── theme/
-│   │   └── app_theme.dart                # Material 3 light + dark
-│   ├── utils/
-│   │   ├── answer_checker.dart           # input answer comparison
-│   │   └── app_router.dart               # go_router setup
-│   └── widgets/
-│       ├── achievement_toast.dart
-│       ├── content_cards.dart            # FormulaCard / MistakesCard / ExampleCard
-│       ├── math_text.dart                # Unicode + LaTeX renderer
-│       ├── primary_button.dart
-│       ├── streak_badge.dart
-│       ├── xp_gain_overlay.dart
-│       └── xp_progress_bar.dart
-├── pubspec.yaml
-└── README.md
+lib/
+├── main.dart                            entry, MaterialApp.router
+├── data/
+│   ├── curriculum.dart                  aggregator
+│   ├── unit_functions.dart              functions & limits
+│   ├── unit_derivatives.dart            derivatives + power rule + special
+│   └── unit_integrals.dart              Riemann, notation, FTC
+├── models/
+│   ├── micro_screen.dart                sealed class for all screen types
+│   ├── lesson.dart                      Lesson + Unit
+│   └── user_progress.dart               XP, streak, FSRS-lite ReviewItem
+├── providers/
+│   └── app_state.dart                   ChangeNotifier — single source of truth
+├── services/
+│   └── storage_service.dart             SharedPreferences wrapper
+├── theme/
+│   └── app_theme.dart                   M3 Expressive ThemeData + presets
+├── screens/
+│   ├── main_shell.dart                  bottom nav + global toasts
+│   ├── home_screen.dart                 dashboard + Continue button
+│   ├── path_screen.dart                 zigzag lesson path
+│   ├── review_screen.dart               FSRS-lite due queue
+│   ├── stats_screen.dart                XP / accuracy / per-unit progress
+│   ├── settings_screen.dart             theme picker, comfort toggles
+│   ├── lesson_runner_screen.dart        the orchestrator
+│   └── lesson_result_screen.dart        celebration / chest
+├── utils/
+│   └── app_router.dart                  go_router config
+└── widgets/
+    ├── diagrams/                        7 animated CustomPainter diagrams
+    ├── questions/                       7 interactive question widgets
+    └── common/                          (reserved)
 ```
 
----
-
-## How it works
-
-### Data layer
-
-`assets/data/stewart_calculus_course.json` is the single source of truth. On
-startup, `CourseProvider.load()` calls `CourseService.instance.loadCourse()`
-which reads the asset via `rootBundle`, parses it once, and caches it. All
-screens read from the same parsed `Course` object.
-
-The JSON shape:
-
-```json
-{
-  "course": "Stewart Calculus: Early Transcendentals 9e",
-  "total_lessons": 116,
-  "total_questions": 580,
-  "units": [
-    {
-      "unit_number": 1,
-      "title": "Functions and Models",
-      "topics": [
-        {
-          "title": "...",
-          "lessons": [
-            {
-              "title": "1.1 Four Ways to Represent a Function",
-              "explanation": "...",
-              "formulas": ["..."],
-              "examples": [{ "setup": "...", "steps": ["..."], "result": "..." }],
-              "common_mistakes": ["..."],
-              "questions": [{ "type": "mcq", "prompt": "...", "options": ["..."], "correct_index": 0, "solution": "..." }],
-              "answers": ["..."],
-              "xp": 14,
-              "difficulty": 2
-            }
-          ]
-        }
-      ]
-    }
-  ]
-}
-```
-
-### Progress
-
-Every XP change, streak update, lesson completion, and achievement unlock goes
-through `ProgressProvider`. State is serialised to JSON and saved in
-`shared_preferences` under the key `progress.v1`. Two `ValueNotifier`s expose
-fresh-event signals (`xpJustGained`, `newlyEarned`) so the global overlays in
-`MainShell` can pop animated toasts above any screen.
-
-### Lesson chain
-
-Lessons are unlocked in course order. The first lesson is always available;
-each subsequent lesson unlocks when its predecessor is completed. This mirrors
-Duolingo's path-style progression and is implemented in
-`ProgressProvider.isUnlocked`.
-
-### Answer checking
-
-`AnswerChecker.isCorrect(user, expected)` normalises Unicode (∫, ², minus
-signs, etc.), strips whitespace, and falls back to numerical equivalence
-within a 2% tolerance — including simple `a/b` fractions. This keeps numerical
-input forgiving without the complexity of a full expression parser.
-
-### Math rendering
-
-`MathText` renders Unicode math in Roboto Mono (which handles ∫, ∂, π, ², etc.
-gracefully). When content looks like real LaTeX (backslashes or `^{...}`), it
-attempts `flutter_math_fork` and silently falls back to text on failure.
-
----
-
-## Customising
-
-- **Add or edit lessons:** edit `assets/data/stewart_calculus_course.json` and
-  hot-restart. The models accept additional fields without breaking.
-- **Theme:** change `AppColors` or `AppTheme.light/dark` in
-  `lib/theme/app_theme.dart`. The whole app re-themes automatically.
-- **Achievements:** add an entry to `Achievements.all` in
-  `lib/models/achievements.dart` with a predicate. New achievements
-  automatically unlock retroactively when their predicate matches.
-
----
-
-## What's covered (versus the brief)
-
-- ✅ Course map with Duolingo-style zig-zag and unlocked / locked nodes
-- ✅ Lesson system with explanation, formulas, examples, common mistakes
-- ✅ Quiz system with MCQ + numerical input + instant feedback
-- ✅ XP, levels (every 100 XP), daily streak with bonus, accuracy tracking
-- ✅ Home screen with greeting, streak, XP bar, daily quote, recent lessons
-- ✅ Stats screen with mini-grid + per-chapter accuracy bar chart
-- ✅ Settings: dark mode, sound, reset, clipboard export, JSON import
-- ✅ Achievements grid with earned/locked states and detail sheet
-- ✅ Search across titles + explanations with snippet previews
-- ✅ Smart review of lessons under 80% accuracy
-- ✅ Animated +XP popup and slide-in achievement toast
-- ✅ Beautiful animated loading screen
-- ✅ Proper dark mode throughout
-- ✅ Complete offline operation — no network calls anywhere
+Pedagogy follows the brief in `Rebuilding a Calculus App as Duolingo for ADHD`.

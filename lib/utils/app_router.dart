@@ -1,90 +1,83 @@
+// lib/utils/app_router.dart
+//
+// go_router setup. Three routes:
+//   /                  → MainShell (bottom nav)
+//   /lesson/:id        → LessonRunnerScreen
+//   /result            → LessonResultScreen (extras carry the data)
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
-import '../screens/achievements_screen.dart';
-import '../screens/home_screen.dart';
-import '../screens/lesson_screen.dart';
-import '../screens/loading_screen.dart';
+import '../data/curriculum.dart';
+import '../models/lesson.dart';
+import '../screens/lesson_result_screen.dart';
+import '../screens/lesson_runner_screen.dart';
 import '../screens/main_shell.dart';
-import '../screens/path_screen.dart';
-import '../screens/quiz_screen.dart';
-import '../screens/quiz_result_screen.dart';
 import '../screens/review_screen.dart';
-import '../screens/search_screen.dart';
-import '../screens/settings_screen.dart';
-import '../screens/stats_screen.dart';
 
-/// Builds the global [GoRouter]. Root paths host the bottom-nav shell;
-/// lesson/quiz routes push fullscreen pages on top.
-GoRouter buildRouter() {
-  return GoRouter(
-    initialLocation: '/',
-    routes: [
-      GoRoute(
-        path: '/loading',
-        builder: (_, __) => const LoadingScreen(),
-      ),
-      ShellRoute(
-        builder: (ctx, state, child) => MainShell(child: child),
-        routes: [
-          GoRoute(
-            path: '/',
-            pageBuilder: (_, state) => const NoTransitionPage(
-              child: HomeScreen(),
-            ),
+final appRouter = GoRouter(
+  initialLocation: '/',
+  routes: [
+    GoRoute(
+      path: '/',
+      builder: (_, __) => const MainShell(),
+    ),
+    GoRoute(
+      path: '/lesson/:id',
+      builder: (context, state) {
+        final id = state.pathParameters['id']!;
+        // First check synthetic review lessons; then static curriculum.
+        final Lesson? lesson =
+            lookupReviewLesson(id) ?? Curriculum.findById(id);
+        if (lesson == null) {
+          return _NotFoundScreen(message: 'Lesson "$id" not found.');
+        }
+        return LessonRunnerScreen(lesson: lesson);
+      },
+    ),
+    GoRoute(
+      path: '/result',
+      builder: (context, state) {
+        final extra = state.extra as Map<String, dynamic>? ?? {};
+        return LessonResultScreen(
+          lessonId: extra['lessonId'] as String? ?? '',
+          correct: extra['correct'] as int? ?? 0,
+          total: extra['total'] as int? ?? 1,
+          showChest: extra['showChest'] as bool? ?? false,
+        );
+      },
+    ),
+  ],
+);
+
+class _NotFoundScreen extends StatelessWidget {
+  const _NotFoundScreen({required this.message});
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Not found')),
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.error_outline_rounded, size: 56),
+              const SizedBox(height: 16),
+              Text(message,
+                  style: Theme.of(context).textTheme.titleMedium,
+                  textAlign: TextAlign.center),
+              const SizedBox(height: 16),
+              FilledButton(
+                onPressed: () => context.go('/'),
+                child: const Text('Back home'),
+              ),
+            ],
           ),
-          GoRoute(
-            path: '/path',
-            pageBuilder: (_, state) => const NoTransitionPage(
-              child: PathScreen(),
-            ),
-          ),
-          GoRoute(
-            path: '/stats',
-            pageBuilder: (_, state) => const NoTransitionPage(
-              child: StatsScreen(),
-            ),
-          ),
-          GoRoute(
-            path: '/settings',
-            pageBuilder: (_, state) => const NoTransitionPage(
-              child: SettingsScreen(),
-            ),
-          ),
-        ],
+        ),
       ),
-      GoRoute(
-        path: '/lesson/:id',
-        builder: (_, state) => LessonScreen(lessonId: state.pathParameters['id']!),
-      ),
-      GoRoute(
-        path: '/quiz/:id',
-        builder: (_, state) => QuizScreen(lessonId: state.pathParameters['id']!),
-      ),
-      GoRoute(
-        path: '/result',
-        builder: (_, state) {
-          final extra = state.extra as Map<String, dynamic>;
-          return QuizResultScreen(
-            lessonId: extra['lessonId'] as String,
-            correct: extra['correct'] as int,
-            total: extra['total'] as int,
-            xpEarned: extra['xpEarned'] as int,
-          );
-        },
-      ),
-      GoRoute(
-        path: '/search',
-        builder: (_, __) => const SearchScreen(),
-      ),
-      GoRoute(
-        path: '/achievements',
-        builder: (_, __) => const AchievementsScreen(),
-      ),
-      GoRoute(
-        path: '/review',
-        builder: (_, __) => const ReviewScreen(),
-      ),
-    ],
-  );
+    );
+  }
 }

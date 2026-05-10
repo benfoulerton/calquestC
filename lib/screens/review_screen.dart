@@ -1,229 +1,190 @@
+// lib/screens/review_screen.dart
+//
+// Lists items the FSRS-lite scheduler thinks are due. Tapping starts a
+// "review session" — a synthetic lesson that pulls only the relevant
+// micro-screens from the curriculum.
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
-import '../models/course.dart';
-import '../providers/course_provider.dart';
-import '../providers/progress_provider.dart';
+import '../data/curriculum.dart';
+import '../models/lesson.dart';
+import '../models/micro_screen.dart';
+import '../models/user_progress.dart';
+import '../providers/app_state.dart';
 import '../theme/app_theme.dart';
-import 'loading_screen.dart';
 
-/// "Smart review" mode: surfaces the lessons where the user scored lowest
-/// so they can re-attempt the quiz. Lessons with accuracy < 80% appear,
-/// sorted ascending. Empty state encourages more practice.
 class ReviewScreen extends StatelessWidget {
   const ReviewScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final courseProv = context.watch<CourseProvider>();
-    final progressProv = context.watch<ProgressProvider>();
-
-    if (courseProv.isLoading || courseProv.course == null) {
-      return const LoadingScreen();
-    }
-    final course = courseProv.course!;
-    final p = progressProv.progress;
-
-    // Build the candidate list: completed lessons whose accuracy is below 80%.
-    final weakLessons = <_WeakLesson>[];
-    for (final l in course.allLessons) {
-      if (!p.completedLessonIds.contains(l.id)) continue;
-      final acc = p.lessonAccuracy[l.id] ?? 0;
-      if (acc < 80) {
-        weakLessons.add(_WeakLesson(l, acc));
-      }
-    }
-    weakLessons.sort((a, b) => a.accuracy.compareTo(b.accuracy));
+    final scheme = Theme.of(context).colorScheme;
+    final app = context.watch<AppState>();
+    final due = app.dueReviewItems();
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Smart review')),
-      body: SafeArea(
-        child: weakLessons.isEmpty
-            ? _EmptyState(
-                hasCompleted: p.completedLessonIds.isNotEmpty,
-              )
-            : ListView(
-                padding: const EdgeInsets.all(16),
-                children: [
-                  Card(
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Row(
-                        children: [
-                          Container(
-                            width: 44,
-                            height: 44,
-                            alignment: Alignment.center,
-                            decoration: BoxDecoration(
-                              color: AppColors.warning.withOpacity(0.12),
-                              borderRadius: BorderRadius.circular(12),
+      appBar: AppBar(title: const Text('Review')),
+      body: due.isEmpty
+          ? Center(
+              child: Padding(
+                padding: const EdgeInsets.all(32),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.spa_rounded,
+                        size: 56, color: scheme.tertiary),
+                    const SizedBox(height: 16),
+                    Text('Nothing to review yet',
+                        style: Theme.of(context).textTheme.headlineSmall),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Finish a few lessons and items will queue up for spaced repetition here.',
+                      style: Theme.of(context).textTheme.bodyMedium,
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
+                ),
+              ),
+            )
+          : ListView(
+              padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: scheme.tertiaryContainer,
+                    borderRadius: BorderRadius.circular(AppTheme.radLarge),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.replay_rounded,
+                          color: scheme.onTertiaryContainer, size: 28),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('${due.length} item${due.length == 1 ? '' : 's'} ready',
+                                style:
+                                    Theme.of(context).textTheme.titleLarge),
+                            Text(
+                              'Re-test these now to lock them in.',
+                              style: Theme.of(context).textTheme.bodyMedium,
                             ),
-                            child: const Icon(Icons.psychology_rounded,
-                                color: AppColors.warning),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment:
-                                  CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'Targeted practice',
-                                  style: Theme.of(context)
-                                      .textTheme
-                                      .titleMedium,
-                                ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  'Re-quizzing your lowest-scoring lessons builds the strongest gains.',
-                                  style: Theme.of(context)
-                                      .textTheme
-                                      .bodyMedium
-                                      ?.copyWith(fontSize: 12),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+                FilledButton.icon(
+                  onPressed: () => _startReviewSession(context, due, app),
+                  icon: const Icon(Icons.play_arrow_rounded),
+                  label: Text('Start review (${due.length.clamp(1, 10)})'),
+                ),
+                const SizedBox(height: 24),
+                Text('Items', style: Theme.of(context).textTheme.titleMedium),
+                const SizedBox(height: 8),
+                for (final r in due)
+                  Container(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 14, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: scheme.surfaceContainer,
+                      borderRadius: BorderRadius.circular(AppTheme.radMedium),
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 8,
+                          height: 8,
+                          decoration: BoxDecoration(
+                            color: r.lapses > 0
+                                ? scheme.error
+                                : scheme.primary,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(r.itemId,
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .titleSmall),
+                              Text(
+                                'Stability: ${r.stabilityDays.toStringAsFixed(1)}d · Lapses: ${r.lapses}',
+                                style: Theme.of(context).textTheme.bodySmall,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                  const SizedBox(height: 16),
-                  Text('${weakLessons.length} lesson${weakLessons.length == 1 ? '' : 's'} to review',
-                      style: Theme.of(context).textTheme.titleMedium),
-                  const SizedBox(height: 10),
-                  for (var i = 0; i < weakLessons.length; i++) ...[
-                    _WeakCard(weak: weakLessons[i]),
-                    if (i != weakLessons.length - 1)
-                      const SizedBox(height: 10),
-                  ],
-                ],
-              ),
-      ),
+              ],
+            ),
     );
   }
-}
 
-class _WeakLesson {
-  final Lesson lesson;
-  final int accuracy;
-  _WeakLesson(this.lesson, this.accuracy);
-}
-
-class _WeakCard extends StatelessWidget {
-  final _WeakLesson weak;
-  const _WeakCard({required this.weak});
-
-  @override
-  Widget build(BuildContext context) {
-    final color = weak.accuracy < 60
-        ? AppColors.error
-        : AppColors.warning;
-    return Card(
-      child: InkWell(
-        onTap: () =>
-            context.push('/quiz/${Uri.encodeComponent(weak.lesson.id)}'),
-        borderRadius: BorderRadius.circular(16),
-        child: Padding(
-          padding: const EdgeInsets.all(14),
-          child: Row(
-            children: [
-              Container(
-                width: 56,
-                height: 56,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: color.withOpacity(0.12),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Text(
-                  '${weak.accuracy}%',
-                  style: TextStyle(
-                      color: color,
-                      fontWeight: FontWeight.w800,
-                      fontSize: 16),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      weak.lesson.title,
-                      style: Theme.of(context).textTheme.titleMedium,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Tap to retake the quiz',
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                            fontSize: 12,
-                            color: AppColors.textFaint,
-                          ),
-                    ),
-                  ],
-                ),
-              ),
-              const Icon(Icons.chevron_right_rounded,
-                  color: AppColors.textFaint),
-            ],
-          ),
+  void _startReviewSession(
+      BuildContext context, List<ReviewItem> due, AppState app) {
+    // Pull up to 10 due itemIds, find one MicroScreen per itemId from any
+    // lesson in the curriculum, build a synthetic Lesson, navigate.
+    final wantedIds = due.take(10).map((r) => r.itemId).toSet();
+    final picked = <MicroScreen>[];
+    for (final l in Curriculum.allLessons) {
+      for (final s in l.screens) {
+        if (s.isQuestion && wantedIds.contains(s.itemId)) {
+          picked.add(s);
+          wantedIds.remove(s.itemId);
+        }
+        if (wantedIds.isEmpty) break;
+      }
+      if (wantedIds.isEmpty) break;
+    }
+    if (picked.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text('No matching practice items found in curriculum.')),
+      );
+      return;
+    }
+    final synthetic = Lesson(
+      id: 'review-${DateTime.now().millisecondsSinceEpoch}',
+      title: 'Quick review',
+      subtitle: 'Spaced repetition',
+      icon: '↺',
+      screens: [
+        ...picked,
+        SummaryScreen(
+          itemId: 'review-summary',
+          title: 'Review done',
+          takeaway: 'Items refreshed. They\'ll be back when needed.',
         ),
-      ),
+      ],
+      xpReward: 6,
     );
+    // Stash the lesson on the router so it can be played by id.
+    _ReviewLessonRegistry.put(synthetic);
+    context.go('/lesson/${synthetic.id}');
   }
 }
 
-class _EmptyState extends StatelessWidget {
-  final bool hasCompleted;
-  const _EmptyState({required this.hasCompleted});
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 80,
-              height: 80,
-              decoration: BoxDecoration(
-                color: AppColors.success.withOpacity(0.12),
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: const Icon(Icons.check_circle_rounded,
-                  color: AppColors.success, size: 40),
-            ),
-            const SizedBox(height: 18),
-            Text(
-              hasCompleted
-                  ? 'Nothing to review!'
-                  : 'No completed lessons yet',
-              style: Theme.of(context).textTheme.titleLarge,
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 6),
-            Text(
-              hasCompleted
-                  ? 'Every completed lesson is at 80% or above. Solid work — keep going.'
-                  : 'Complete a few lessons first; this screen will then surface the ones you need to revisit.',
-              textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.bodyMedium,
-            ),
-            const SizedBox(height: 18),
-            OutlinedButton.icon(
-              icon: const Icon(Icons.timeline_rounded),
-              onPressed: () => context.go('/path'),
-              label: const Text('Open course path'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+/// In-memory registry for synthetic review lessons. The router consults
+/// it before falling back to the static curriculum.
+class _ReviewLessonRegistry {
+  _ReviewLessonRegistry._();
+  static final Map<String, Lesson> _byId = {};
+  static void put(Lesson l) => _byId[l.id] = l;
+  static Lesson? get(String id) => _byId[id];
 }
+
+/// Public accessor used by the router.
+Lesson? lookupReviewLesson(String id) => _ReviewLessonRegistry.get(id);

@@ -1,378 +1,432 @@
+// lib/screens/home_screen.dart
+//
+// First-tab dashboard. The most important element is the "Continue
+// Learning" button — single tap into the next lesson, no menus, no
+// chooser. ADHD task-initiation friction must be sub-10s.
+
 import 'package:flutter/material.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
-import '../data/daily_quotes.dart';
-import '../models/course.dart';
-import '../providers/course_provider.dart';
-import '../providers/progress_provider.dart';
+import '../data/curriculum.dart';
+import '../models/lesson.dart';
+import '../providers/app_state.dart';
 import '../theme/app_theme.dart';
-import '../widgets/primary_button.dart';
-import '../widgets/streak_badge.dart';
-import '../widgets/xp_progress_bar.dart';
-import 'loading_screen.dart';
 
-/// The home tab — at-a-glance summary plus the main "Continue" action.
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final courseProv = context.watch<CourseProvider>();
-    final progressProv = context.watch<ProgressProvider>();
-
-    if (courseProv.isLoading || courseProv.course == null) {
-      return const LoadingScreen();
+    final scheme = Theme.of(context).colorScheme;
+    final palette = AppPalette.fromScheme(scheme);
+    final app = context.watch<AppState>();
+    final all = Curriculum.allLessons;
+    Lesson? next;
+    for (final l in all) {
+      if (!app.progress.completedLessonIds.contains(l.id)) {
+        next = l;
+        break;
+      }
     }
-    if (courseProv.error != null) {
-      return _ErrorState(error: courseProv.error!);
-    }
-    final course = courseProv.course!;
-    final progress = progressProv.progress;
-    final next = progressProv.nextLesson(course);
+    final completedCount = app.progress.completedLessonIds.length;
+    final totalCount = Curriculum.totalLessons;
 
-    return SafeArea(
-      child: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
-        children: [
-          // Header: greeting + streak.
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      _greeting(),
-                      style: Theme.of(context).textTheme.bodyMedium,
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      'Calculus Quest',
-                      style: Theme.of(context).textTheme.headlineLarge,
-                    ),
-                  ],
-                ),
-              ),
-              StreakBadge(streak: progress.currentStreak, large: true),
-            ],
-          ),
-          const SizedBox(height: 22),
-
-          // XP / level card.
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(18),
-              child: Column(
-                children: [
-                  XpProgressBar(
-                    xpInLevel: progress.xpInLevel,
-                    level: progress.level,
-                  ),
-                  const SizedBox(height: 14),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceAround,
+    return Scaffold(
+      body: SafeArea(
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      _MiniStat(
-                          label: 'Total XP', value: '${progress.xp}'),
-                      _MiniStat(
-                          label: 'Lessons',
-                          value:
-                              '${progress.completedLessonIds.length}/${course.totalLessons}'),
-                      _MiniStat(
-                        label: 'Accuracy',
-                        value:
-                            '${progress.lifetimeAccuracy.toStringAsFixed(0)}%',
+                      Text('Welcome back',
+                          style: Theme.of(context).textTheme.bodyMedium),
+                      const SizedBox(height: 2),
+                      Text(
+                        next == null
+                            ? 'You\'ve done it all 🎉'
+                            : next.title,
+                        style: Theme.of(context).textTheme.headlineMedium,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ],
                   ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-
-          // Continue button.
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(18),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    next == null
-                        ? 'You finished every lesson!'
-                        : 'Up next',
-                    style: Theme.of(context).textTheme.bodyMedium,
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    next?.title ?? 'Time to celebrate.',
-                    style: Theme.of(context).textTheme.titleLarge,
-                  ),
-                  const SizedBox(height: 16),
-                  if (next != null)
-                    PrimaryButton(
-                      icon: Icons.play_arrow_rounded,
-                      label: 'Continue learning',
-                      onPressed: () => context.push('/lesson/${Uri.encodeComponent(next.id)}'),
-                    )
-                  else
-                    PrimaryButton(
-                      icon: Icons.refresh_rounded,
-                      label: 'Practise again',
-                      onPressed: () => context.go('/path'),
-                    ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-
-          // Quick actions.
-          Row(
-            children: [
-              Expanded(
-                child: _QuickAction(
-                  icon: Icons.search_rounded,
-                  label: 'Search',
-                  color: AppColors.primary,
-                  onTap: () => context.push('/search'),
                 ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _QuickAction(
-                  icon: Icons.psychology_rounded,
-                  label: 'Smart review',
-                  color: AppColors.accent,
-                  onTap: () => context.push('/review'),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _QuickAction(
-                  icon: Icons.emoji_events_rounded,
-                  label: 'Badges',
-                  color: AppColors.warning,
-                  onTap: () => context.push('/achievements'),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-
-          // Daily quote.
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(18),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      const Icon(Icons.format_quote_rounded,
-                          color: AppColors.accent, size: 20),
-                      const SizedBox(width: 6),
-                      Text('Daily inspiration',
-                          style: Theme.of(context).textTheme.titleMedium),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    DailyQuotes.forToday(),
-                    style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                          fontStyle: FontStyle.italic,
-                          height: 1.5,
-                        ),
-                  ),
-                ],
-              ),
+                const SizedBox(width: 12),
+                _StreakBadge(streak: app.progress.currentStreak,
+                    streakColor: palette.streak),
+              ],
             ),
-          ),
-          const SizedBox(height: 16),
+            const SizedBox(height: 20),
+            // Continue / Start FAB-style.
+            if (next != null)
+              _ContinueCard(lesson: next).animate().fadeIn(duration: 280.ms),
+            const SizedBox(height: 20),
+            _LevelBar(
+                xp: app.progress.xp,
+                level: app.progress.level,
+                xpInLevel: app.progress.xpInLevel),
+            const SizedBox(height: 20),
+            // Quick stats.
+            Row(
+              children: [
+                Expanded(
+                  child: _MiniStat(
+                    icon: Icons.school_rounded,
+                    label: 'Lessons done',
+                    value: '$completedCount / $totalCount',
+                    color: scheme.primary,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _MiniStat(
+                    icon: Icons.target_rounded,
+                    label: 'Accuracy',
+                    value: '${app.progress.accuracyPct.round()}%',
+                    color: scheme.tertiary,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: _MiniStat(
+                    icon: Icons.bolt_rounded,
+                    label: 'Total XP',
+                    value: '${app.progress.xp}',
+                    color: palette.streak,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _MiniStat(
+                    icon: Icons.replay_rounded,
+                    label: 'Due reviews',
+                    value: '${app.dueReviewItems().length}',
+                    color: scheme.secondary,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 24),
+            // Daily quests strip.
+            _DailyQuests(app: app),
+          ],
+        ),
+      ),
+    );
+  }
+}
 
-          // Recent lessons.
-          _RecentLessons(course: course),
+class _StreakBadge extends StatelessWidget {
+  const _StreakBadge({required this.streak, required this.streakColor});
+  final int streak;
+  final Color streakColor;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: streakColor.withOpacity(0.15),
+        borderRadius: BorderRadius.circular(AppTheme.radPill),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.local_fire_department_rounded,
+              color: streakColor, size: 22),
+          const SizedBox(width: 4),
+          Text('$streak',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  color: streakColor, fontWeight: FontWeight.w800)),
         ],
       ),
     );
   }
+}
 
-  String _greeting() {
-    final h = DateTime.now().hour;
-    if (h < 12) return 'Good morning';
-    if (h < 18) return 'Good afternoon';
-    return 'Good evening';
+class _ContinueCard extends StatelessWidget {
+  const _ContinueCard({required this.lesson});
+  final Lesson lesson;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return GestureDetector(
+      onTap: () => context.go('/lesson/${lesson.id}'),
+      child: Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: scheme.primary,
+          borderRadius: BorderRadius.circular(AppTheme.radLarge),
+          boxShadow: [
+            BoxShadow(
+              color: scheme.primary.withOpacity(0.3),
+              blurRadius: 12,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 56,
+              height: 56,
+              decoration: BoxDecoration(
+                color: scheme.onPrimary.withOpacity(0.18),
+                shape: BoxShape.circle,
+              ),
+              child: Center(
+                child: Text(lesson.icon,
+                    style: TextStyle(
+                        fontSize: 26,
+                        color: scheme.onPrimary,
+                        fontWeight: FontWeight.w800)),
+              ),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Continue learning',
+                      style: Theme.of(context)
+                          .textTheme
+                          .labelMedium
+                          ?.copyWith(color: scheme.onPrimary.withOpacity(0.8))),
+                  const SizedBox(height: 2),
+                  Text(lesson.title,
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                          color: scheme.onPrimary,
+                          fontWeight: FontWeight.w800)),
+                  const SizedBox(height: 2),
+                  Text(lesson.subtitle,
+                      style: Theme.of(context)
+                          .textTheme
+                          .bodyMedium
+                          ?.copyWith(color: scheme.onPrimary.withOpacity(0.85))),
+                ],
+              ),
+            ),
+            Icon(Icons.play_arrow_rounded,
+                color: scheme.onPrimary, size: 32),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _LevelBar extends StatelessWidget {
+  const _LevelBar(
+      {required this.xp, required this.level, required this.xpInLevel});
+  final int xp, level, xpInLevel;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final progress = xpInLevel / 100;
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainer,
+        borderRadius: BorderRadius.circular(AppTheme.radLarge),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              CircleAvatar(
+                radius: 18,
+                backgroundColor: scheme.primaryContainer,
+                child: Text('$level',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        color: scheme.onPrimaryContainer,
+                        fontWeight: FontWeight.w800)),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Level $level',
+                        style: Theme.of(context).textTheme.titleMedium),
+                    Text('${100 - xpInLevel} XP to next level',
+                        style: Theme.of(context).textTheme.bodySmall),
+                  ],
+                ),
+              ),
+              Text('$xp XP',
+                  style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                      fontWeight: FontWeight.w800,
+                      color: scheme.onSurfaceVariant)),
+            ],
+          ),
+          const SizedBox(height: 12),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(999),
+            child: LinearProgressIndicator(
+              value: progress.clamp(0.0, 1.0),
+              minHeight: 10,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 
 class _MiniStat extends StatelessWidget {
-  final String label;
-  final String value;
-  const _MiniStat({required this.label, required this.value});
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Text(value,
-            style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                  fontWeight: FontWeight.w800,
-                )),
-        const SizedBox(height: 2),
-        Text(label,
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  fontSize: 12,
-                  color: AppColors.textFaint,
-                )),
-      ],
-    );
-  }
-}
-
-class _QuickAction extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final Color color;
-  final VoidCallback onTap;
-  const _QuickAction({
+  const _MiniStat({
     required this.icon,
     required this.label,
+    required this.value,
     required this.color,
-    required this.onTap,
   });
+  final IconData icon;
+  final String label;
+  final String value;
+  final Color color;
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(16),
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 8),
-        decoration: BoxDecoration(
-          color: Theme.of(context).cardColor,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-              color: Theme.of(context).dividerColor, width: 1),
-        ),
-        child: Column(
-          children: [
-            Container(
-              width: 36,
-              height: 36,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: color.withOpacity(0.12),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Icon(icon, color: color, size: 18),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              label,
-              textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    fontWeight: FontWeight.w600,
-                    fontSize: 12,
-                  ),
-            ),
-          ],
-        ),
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainer,
+        borderRadius: BorderRadius.circular(AppTheme.radLarge),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, color: color),
+          const SizedBox(height: 8),
+          Text(value,
+              style: Theme.of(context)
+                  .textTheme
+                  .titleMedium
+                  ?.copyWith(fontWeight: FontWeight.w800)),
+          Text(label, style: Theme.of(context).textTheme.bodySmall),
+        ],
       ),
     );
   }
 }
 
-class _RecentLessons extends StatelessWidget {
-  final Course course;
-  const _RecentLessons({required this.course});
+class _DailyQuests extends StatelessWidget {
+  const _DailyQuests({required this.app});
+  final AppState app;
 
   @override
   Widget build(BuildContext context) {
-    final progress = context.watch<ProgressProvider>().progress;
-    // Pick the most recent 4 completed lessons (in course order).
-    final completedInOrder = course.allLessons
-        .where((l) => progress.completedLessonIds.contains(l.id))
-        .toList();
-    final recent = completedInOrder.length <= 4
-        ? completedInOrder.reversed.toList()
-        : completedInOrder.sublist(completedInOrder.length - 4).reversed.toList();
+    // Quests are derived from progress — lightweight, no separate state.
+    final scheme = Theme.of(context).colorScheme;
+    final today = DateTime.now();
+    final completedToday = app.progress.lastActiveDay ==
+        '${today.year}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}';
+    final quests = [
+      _Quest(
+        title: 'Finish 1 lesson',
+        done: completedToday,
+        icon: Icons.school_rounded,
+      ),
+      _Quest(
+        title: 'Earn ${app.progress.dailyGoalMinutes * 4} XP',
+        done: false, // simplified — real impl would count today's XP
+        icon: Icons.bolt_rounded,
+      ),
+      _Quest(
+        title: 'Hit ${app.progress.dailyGoalMinutes} min',
+        done: false,
+        icon: Icons.timer_outlined,
+      ),
+    ];
 
-    if (recent.isEmpty) return const SizedBox.shrink();
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainer,
+        borderRadius: BorderRadius.circular(AppTheme.radLarge),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.flag_rounded, color: scheme.primary),
+              const SizedBox(width: 8),
+              Text("Today's quests",
+                  style: Theme.of(context).textTheme.titleMedium),
+            ],
+          ),
+          const SizedBox(height: 12),
+          for (final q in quests) ...[
+            _QuestRow(quest: q),
+            const SizedBox(height: 8),
+          ],
+        ],
+      ),
+    );
+  }
+}
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+class _Quest {
+  const _Quest({required this.title, required this.done, required this.icon});
+  final String title;
+  final bool done;
+  final IconData icon;
+}
+
+class _QuestRow extends StatelessWidget {
+  const _QuestRow({required this.quest});
+  final _Quest quest;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final palette = AppPalette.fromScheme(scheme);
+    return Row(
       children: [
-        Padding(
-          padding: const EdgeInsets.only(left: 4, bottom: 8),
-          child: Text(
-            'Recently completed',
-            style: Theme.of(context).textTheme.titleMedium,
+        Container(
+          width: 32,
+          height: 32,
+          decoration: BoxDecoration(
+            color:
+                quest.done ? palette.successContainer : scheme.surfaceContainerHigh,
+            shape: BoxShape.circle,
+          ),
+          child: Icon(
+            quest.done ? Icons.check_rounded : quest.icon,
+            color: quest.done ? palette.success : scheme.onSurfaceVariant,
+            size: 18,
           ),
         ),
-        Card(
-          child: Column(
-            children: [
-              for (var i = 0; i < recent.length; i++) ...[
-                ListTile(
-                  leading: Container(
-                    width: 36,
-                    height: 36,
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      color: AppColors.success.withOpacity(0.12),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: const Icon(Icons.check_rounded,
-                        color: AppColors.success),
-                  ),
-                  title: Text(recent[i].title,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.titleMedium),
-                  subtitle: Text(
-                    '${progress.lessonAccuracy[recent[i].id] ?? 0}% accuracy · +${recent[i].xp} XP',
-                  ),
-                  trailing: const Icon(Icons.chevron_right_rounded),
-                  onTap: () => context.push(
-                      '/lesson/${Uri.encodeComponent(recent[i].id)}'),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Text(
+            quest.title,
+            style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                  decoration:
+                      quest.done ? TextDecoration.lineThrough : null,
+                  color: quest.done
+                      ? scheme.onSurfaceVariant
+                      : scheme.onSurface,
                 ),
-                if (i != recent.length - 1) const Divider(height: 1),
-              ],
-            ],
           ),
         ),
       ],
-    );
-  }
-}
-
-class _ErrorState extends StatelessWidget {
-  final Object error;
-  const _ErrorState({required this.error});
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.error_outline_rounded,
-                color: AppColors.error, size: 48),
-            const SizedBox(height: 12),
-            Text('Could not load the course',
-                style: Theme.of(context).textTheme.titleLarge),
-            const SizedBox(height: 8),
-            Text('$error',
-                textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.bodyMedium),
-          ],
-        ),
-      ),
     );
   }
 }

@@ -1,7 +1,7 @@
 name: calculus_quest
-description: A Duolingo-style calculus learning app powered by Stewart Calculus 9e.
+description: Duolingo-style calculus learning, ADHD-friendly, Material 3 Expressive.
 publish_to: 'none'
-version: 1.0.0+1
+version: 2.0.0+1
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
@@ -19,13 +19,12 @@ dependencies:
   # Persistence
   shared_preferences: ^2.2.2
 
-  # Math rendering
-  flutter_math_fork: ^0.7.2
-
-  # Animations & UI
-  animations: ^2.0.11
+  # Material 3 Expressive
+  dynamic_color: ^1.7.0
   google_fonts: ^6.2.1
-  flutter_svg: ^2.0.10+1
+
+  # Animations
+  flutter_animate: ^4.5.0
 
 dev_dependencies:
   flutter_test:
@@ -34,5 +33,3 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
-  assets:
-    - assets/data/stewart_calculus_course.json

@@ -1,283 +1,253 @@
+// lib/screens/path_screen.dart
+//
+// Vertical scrollable path of lesson nodes, in zigzag layout. Each node
+// shows the lesson icon and a star count. Locked lessons are dimmed; the
+// next-up unlocked lesson bounces gently. Tapping launches the lesson.
+
 import 'package:flutter/material.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
-import '../models/course.dart';
-import '../providers/course_provider.dart';
-import '../providers/progress_provider.dart';
+import '../data/curriculum.dart';
+import '../models/lesson.dart';
+import '../providers/app_state.dart';
 import '../theme/app_theme.dart';
-import 'loading_screen.dart';
 
-/// The course map: each chapter is a section, lessons inside it are nodes
-/// arranged in a gentle Duolingo-style zig-zag. Locked / unlocked state
-/// follows from `ProgressProvider.isUnlocked`.
 class PathScreen extends StatelessWidget {
   const PathScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final courseProv = context.watch<CourseProvider>();
-    final progressProv = context.watch<ProgressProvider>();
+    final scheme = Theme.of(context).colorScheme;
+    final app = context.watch<AppState>();
+    final completed = app.progress.completedLessonIds;
 
-    if (courseProv.isLoading || courseProv.course == null) {
-      return const LoadingScreen();
+    // Find the index of the first incomplete lesson, that's the "next up".
+    final allLessons = Curriculum.allLessons;
+    int nextUp = -1;
+    for (var i = 0; i < allLessons.length; i++) {
+      if (!completed.contains(allLessons[i].id)) {
+        nextUp = i;
+        break;
+      }
     }
-    final course = courseProv.course!;
 
-    return SafeArea(
-      child: CustomScrollView(
-        slivers: [
-          SliverAppBar(
-            backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-            pinned: true,
-            elevation: 0,
-            scrolledUnderElevation: 0,
-            title: Text(
-              'Course path',
-              style: Theme.of(context).textTheme.titleLarge,
-            ),
-            actions: [
-              IconButton(
-                icon: const Icon(Icons.search_rounded),
-                onPressed: () => context.push('/search'),
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Path'),
+        centerTitle: true,
+      ),
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+        children: [
+          for (final unit in Curriculum.units) ...[
+            _UnitHeader(unit: unit),
+            const SizedBox(height: 8),
+            for (var i = 0; i < unit.lessons.length; i++)
+              _PathNode(
+                lesson: unit.lessons[i],
+                position: i % 2 == 0 ? _NodeSide.left : _NodeSide.right,
+                completed: completed.contains(unit.lessons[i].id),
+                stars: app.progress.lessonStars[unit.lessons[i].id] ?? 0,
+                isNext: allLessons.indexOf(unit.lessons[i]) == nextUp,
+                locked: _isLocked(unit.lessons[i], allLessons, completed),
               ),
-            ],
+            const SizedBox(height: 24),
+          ],
+        ],
+      ),
+    );
+  }
+
+  /// A lesson is "locked" if any earlier lesson in the curriculum hasn't been
+  /// completed. Lightweight gate — keeps users from skipping ahead.
+  bool _isLocked(Lesson l, List<Lesson> all, Set<String> completed) {
+    final idx = all.indexOf(l);
+    for (var i = 0; i < idx; i++) {
+      if (!completed.contains(all[i].id)) return true;
+    }
+    return false;
+  }
+}
+
+class _UnitHeader extends StatelessWidget {
+  const _UnitHeader({required this.unit});
+  final Unit unit;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      margin: const EdgeInsets.only(top: 16, bottom: 8),
+      decoration: BoxDecoration(
+        color: scheme.primaryContainer,
+        borderRadius: BorderRadius.circular(AppTheme.radLarge),
+      ),
+      child: Row(
+        children: [
+          Text(unit.icon,
+              style: TextStyle(
+                  fontSize: 28,
+                  color: scheme.onPrimaryContainer,
+                  fontWeight: FontWeight.w800)),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(unit.title,
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        color: scheme.onPrimaryContainer,
+                        fontWeight: FontWeight.w800)),
+                Text(unit.tagline,
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: scheme.onPrimaryContainer.withOpacity(0.7))),
+              ],
+            ),
           ),
-          for (final unit in course.units)
-            _UnitSliver(course: course, unit: unit, progress: progressProv),
-          const SliverToBoxAdapter(child: SizedBox(height: 32)),
         ],
       ),
     );
   }
 }
 
-class _UnitSliver extends StatelessWidget {
-  final Course course;
-  final Unit unit;
-  final ProgressProvider progress;
-  const _UnitSliver({
-    required this.course,
-    required this.unit,
-    required this.progress,
-  });
+enum _NodeSide { left, right }
 
-  @override
-  Widget build(BuildContext context) {
-    final lessons = unit.lessons;
-    final completed =
-        lessons.where((l) => progress.isCompleted(l)).length;
-    return SliverList(
-      delegate: SliverChildListDelegate([
-        // Unit header
-        Container(
-          margin: const EdgeInsets.fromLTRB(16, 24, 16, 12),
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: [
-                AppColors.primary.withOpacity(0.95),
-                AppColors.accent.withOpacity(0.95),
-              ],
-            ),
-            borderRadius: BorderRadius.circular(20),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'CHAPTER ${unit.unitNumber}',
-                style: const TextStyle(
-                  color: Colors.white70,
-                  letterSpacing: 1.5,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                unit.title,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 20,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(99),
-                      child: LinearProgressIndicator(
-                        value: lessons.isEmpty
-                            ? 0
-                            : completed / lessons.length,
-                        backgroundColor: Colors.white24,
-                        color: Colors.white,
-                        minHeight: 6,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Text(
-                    '$completed/${lessons.length}',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-
-        // Lesson nodes in a zig-zag.
-        for (var i = 0; i < lessons.length; i++)
-          _PathNode(
-            lesson: lessons[i],
-            indexInUnit: i,
-            unlocked: progress.isUnlocked(course, lessons[i]),
-            completed: progress.isCompleted(lessons[i]),
-            stars: progress.progress.lessonStars[lessons[i].id] ?? 0,
-          ),
-      ]),
-    );
-  }
-}
-
-/// Single lesson node: a circular tappable indicator on a zig-zag path,
-/// colour-coded by state (locked / current / completed).
 class _PathNode extends StatelessWidget {
-  final Lesson lesson;
-  final int indexInUnit;
-  final bool unlocked;
-  final bool completed;
-  final int stars;
-
   const _PathNode({
     required this.lesson,
-    required this.indexInUnit,
-    required this.unlocked,
+    required this.position,
     required this.completed,
     required this.stars,
+    required this.isNext,
+    required this.locked,
   });
+
+  final Lesson lesson;
+  final _NodeSide position;
+  final bool completed;
+  final int stars;
+  final bool isNext;
+  final bool locked;
 
   @override
   Widget build(BuildContext context) {
-    // Zig-zag: alternate left/right offset.
-    final offsetSign = (indexInUnit % 4 < 2) ? 1.0 : -1.0;
-    final offset = offsetSign * (indexInUnit % 2 == 0 ? 36.0 : 12.0);
+    final scheme = Theme.of(context).colorScheme;
+    final palette = AppPalette.fromScheme(scheme);
 
-    final Color nodeColor;
-    final IconData icon;
-    if (completed) {
-      nodeColor = AppColors.success;
-      icon = Icons.check_rounded;
-    } else if (!unlocked) {
-      nodeColor = AppColors.lockedNode;
-      icon = Icons.lock_rounded;
+    Color nodeColor;
+    Color iconColor;
+    if (locked) {
+      nodeColor = scheme.surfaceContainer;
+      iconColor = scheme.onSurfaceVariant.withOpacity(0.5);
+    } else if (completed) {
+      nodeColor = palette.success;
+      iconColor = Colors.white;
+    } else if (isNext) {
+      nodeColor = scheme.primary;
+      iconColor = scheme.onPrimary;
     } else {
-      nodeColor = AppColors.primary;
-      icon = Icons.play_arrow_rounded;
+      nodeColor = scheme.surfaceContainerHighest;
+      iconColor = scheme.onSurface;
     }
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
+    final node = GestureDetector(
+      onTap: locked
+          ? () {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Finish earlier lessons first.')),
+              );
+            }
+          : () => context.go('/lesson/${lesson.id}'),
+      child: Column(
         children: [
-          // Spacer to create zig-zag.
-          if (offset > 0) SizedBox(width: offset.abs()),
-          GestureDetector(
-            onTap: !unlocked
-                ? () => _showLockedSnack(context)
-                : () => context
-                    .push('/lesson/${Uri.encodeComponent(lesson.id)}'),
-            child: Column(
-              children: [
-                AnimatedContainer(
-                  duration: const Duration(milliseconds: 250),
-                  width: 64,
-                  height: 64,
-                  decoration: BoxDecoration(
-                    color: nodeColor,
-                    shape: BoxShape.circle,
-                    boxShadow: unlocked
-                        ? [
-                            BoxShadow(
-                              color: nodeColor.withOpacity(0.3),
-                              blurRadius: 14,
-                              offset: const Offset(0, 6),
-                            ),
-                          ]
-                        : null,
-                  ),
-                  alignment: Alignment.center,
-                  child: Icon(icon, color: Colors.white, size: 28),
-                ),
-                const SizedBox(height: 6),
-                if (completed)
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: List.generate(
-                      3,
-                      (i) => Icon(
-                        i < stars
-                            ? Icons.star_rounded
-                            : Icons.star_outline_rounded,
-                        color: AppColors.warning,
-                        size: 14,
+          Container(
+            width: 76,
+            height: 76,
+            decoration: BoxDecoration(
+              color: nodeColor,
+              shape: BoxShape.circle,
+              boxShadow: completed || isNext
+                  ? [
+                      BoxShadow(
+                        color: nodeColor.withOpacity(0.4),
+                        blurRadius: 16,
+                        offset: const Offset(0, 4),
                       ),
-                    ),
+                    ]
+                  : null,
+            ),
+            child: Center(
+              child: locked
+                  ? Icon(Icons.lock_rounded, color: iconColor, size: 32)
+                  : completed
+                      ? Icon(Icons.check_rounded, color: iconColor, size: 36)
+                      : Text(
+                          lesson.icon,
+                          style: TextStyle(
+                              fontSize: 32,
+                              color: iconColor,
+                              fontWeight: FontWeight.w800),
+                        ),
+            ),
+          ),
+          if (completed && stars > 0) ...[
+            const SizedBox(height: 4),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                for (var i = 0; i < 3; i++)
+                  Icon(
+                    i < stars
+                        ? Icons.star_rounded
+                        : Icons.star_outline_rounded,
+                    size: 14,
+                    color: i < stars
+                        ? palette.streak
+                        : scheme.outlineVariant,
                   ),
               ],
             ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: GestureDetector(
-              onTap: !unlocked
-                  ? () => _showLockedSnack(context)
-                  : () => context
-                      .push('/lesson/${Uri.encodeComponent(lesson.id)}'),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    lesson.title,
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                          color: unlocked
-                              ? null
-                              : AppColors.textFaint,
-                        ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    'Difficulty ${lesson.difficulty} · +${lesson.xp} XP',
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          fontSize: 12,
-                          color: AppColors.textFaint,
-                        ),
-                  ),
-                ],
-              ),
+          ],
+          const SizedBox(height: 4),
+          SizedBox(
+            width: 110,
+            child: Text(
+              lesson.title,
+              style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                  color: locked
+                      ? scheme.onSurfaceVariant.withOpacity(0.6)
+                      : scheme.onSurface),
+              textAlign: TextAlign.center,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
             ),
           ),
-          if (offset < 0) SizedBox(width: offset.abs()),
         ],
       ),
     );
-  }
 
-  void _showLockedSnack(BuildContext context) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Complete the previous lesson to unlock this one.'),
-        behavior: SnackBarBehavior.floating,
-        duration: Duration(seconds: 2),
+    final aligned = Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        children: [
+          if (position == _NodeSide.right) const Spacer(),
+          isNext
+              ? node.animate(
+                      onComplete: (c) => c.repeat(reverse: true))
+                  .moveY(
+                      begin: 0,
+                      end: -6,
+                      duration: 1100.ms,
+                      curve: Curves.easeInOut)
+              : node,
+          if (position == _NodeSide.left) const Spacer(),
+        ],
       ),
     );
+    return aligned;
   }
 }
